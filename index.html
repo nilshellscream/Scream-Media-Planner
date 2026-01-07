@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scream Reach Planner</title>
-    <!-- Vi laddar in nödvändiga bibliotek direkt i webbläsaren -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Lucide ikoner -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { font-family: 'Archivo', sans-serif; }
@@ -18,9 +16,38 @@
             .no-print { display: none !important; }
             body { background: white !important; }
         }
-        .editable-cell { transition: all 0.2s; border-bottom: 1px solid transparent; padding: 4px 12px; border-radius: 4px; background: transparent; }
+        .table-number {
+            font-family: 'Archivo', sans-serif;
+            font-variant-numeric: tabular-nums;
+        }
+        .editable-cell { 
+            transition: all 0.2s; 
+            border-bottom: 1px solid transparent; 
+            padding: 4px 12px; 
+            border-radius: 4px; 
+            background: transparent;
+            font-family: 'Archivo', sans-serif;
+        }
         .editable-cell:hover { background: rgba(255,255,255,0.6); border-bottom-color: #00423344; }
         .editable-cell:focus { outline: none; background: white; border-bottom-color: #004233; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        .factor-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            padding: 4px 8px;
+            width: 50px;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        /* Custom scrollbar for better look */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #004233; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-[#fff1e4]">
@@ -29,12 +56,9 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
-        // Ikon-komponent för att hantera Lucide i React-miljö utan NPM
         const Icon = ({ name, size = 16, className = "" }) => {
             useEffect(() => {
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
+                if (window.lucide) window.lucide.createIcons();
             }, [name]);
             return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
         };
@@ -44,7 +68,8 @@
         const COLORS = {
             primary: '#004233',
             secondary: '#fff1e4',
-            border: '#dcece8'
+            border: '#dcece8',
+            barBg: '#e0ede9' // Light green for the 100% background
         };
         const LOGO_URL = "https://cdn.prod.website-files.com/6659ca39bd3186a564743e73/6659d12099b696012798747a_scream-logo-vit.svg";
 
@@ -62,7 +87,8 @@
             ]);
 
             const formatNumber = (num) => new Intl.NumberFormat('sv-SE').format(Math.round(num));
-            const formatDecimal = (num) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+            const formatDecimal = (num) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(num);
+            
             const parseInput = (val) => {
                 if (typeof val !== 'string') return val;
                 const clean = val.replace(/\s/g, '').replace(/%/g, '').replace(/,/g, '.');
@@ -131,7 +157,7 @@
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <Icon name={icon} size={14} className="opacity-20 mb-0.5" />
-                            <span className="text-lg font-bold">{Math.round(percentage)}%</span>
+                            <span className="text-lg font-bold table-number">{Math.round(percentage)}%</span>
                         </div>
                     </div>
                     <p className="mt-2 text-[9px] font-bold uppercase tracking-widest opacity-60">{label}</p>
@@ -145,45 +171,71 @@
                         {/* HEADER */}
                         <div className="bg-[#004233] text-[#fff1e4] p-5 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="flex items-center gap-6">
-                                <img src={LOGO_URL} alt="Scream" className="h-8" />
-                                <h1 className="text-xl font-bold">Reach Planner</h1>
+                                <img src={LOGO_URL} alt="Scream" className="h-6" />
+                                <h1 className="text-2xl font-bold text-white">Reach Planner</h1>
                             </div>
-                            <div className="flex gap-3 no-print">
-                                <button onClick={() => setUseDeduplication(!useDeduplication)} className="text-[10px] font-bold uppercase tracking-widest bg-white/10 px-4 py-2 rounded-full border border-white/20">
+                            <div className="flex flex-wrap justify-center gap-3 no-print">
+                                <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Faktor:</span>
+                                    <input 
+                                        type="text"
+                                        value={correctionFactor} 
+                                        onChange={(e) => setCorrectionFactor(parseInput(e.target.value))}
+                                        className="factor-input text-xs table-number"
+                                    />
+                                </div>
+                                <button onClick={() => setUseDeduplication(!useDeduplication)} className="text-[10px] font-bold uppercase tracking-widest bg-white/10 px-4 py-2 rounded-full border border-white/20 hover:bg-white/20 transition-all">
                                     {useDeduplication ? "De-duplicerad" : "Linjär"}
                                 </button>
                                 <button onClick={copySummary} className="p-2 bg-white/10 rounded-lg border border-white/20 hover:bg-white/20 flex items-center gap-2 text-[10px] font-bold uppercase">
                                     <Icon name={copyFeedback ? "check" : "copy"} size={14} />
                                     {copyFeedback ? "Kopierad!" : "Kopiera"}
                                 </button>
-                                <button onClick={() => window.print()} className="p-2 bg-white text-[#004233] rounded-lg text-[10px] font-bold uppercase flex items-center gap-2">
+                                <button onClick={() => window.print()} className="p-2 bg-white text-[#004233] rounded-lg text-[10px] font-bold uppercase flex items-center gap-2 hover:bg-[#fff1e4] transition-all">
                                     <Icon name="download" size={14} /> PDF
                                 </button>
                             </div>
                         </div>
 
-                        {/* SETTINGS */}
+                        {/* INFO BOXES */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-white p-4 rounded-xl border border-[#dcece8] flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                    <Icon name="users" className="text-[#004233] opacity-40" />
+                            <div className="bg-white p-5 rounded-xl border border-[#dcece8] shadow-sm flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 bg-[#f4f9f7] rounded-lg flex items-center justify-center">
+                                        <Icon name="users" className="text-[#004233]" size={20} />
+                                    </div>
                                     <div>
-                                        <span className="text-[9px] font-bold uppercase opacity-40 block">Basuniversum</span>
-                                        <span className="text-sm font-bold text-[#004233]">{BASE_AUDIENCE_NAME}</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#004233] opacity-40 block mb-0.5">Basuniversum</span>
+                                        <span className="text-sm font-bold text-[#004233] uppercase">{BASE_AUDIENCE_NAME}</span>
                                     </div>
                                 </div>
-                                <div className="font-mono font-bold text-lg text-[#004233]">{formatNumber(BASE_AUDIENCE_SIZE)}</div>
+                                <div className="bg-[#f4f9f7] px-4 py-2 rounded-lg border border-[#e0ede9]">
+                                    <span className="text-xl font-bold text-[#004233] table-number tracking-tight">
+                                        {formatNumber(BASE_AUDIENCE_SIZE)}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="bg-white p-4 rounded-xl border border-[#dcece8] flex justify-between items-center">
-                                <div className="flex items-center gap-3 flex-1">
-                                    <Icon name="target" className="text-[#004233] opacity-40" />
+
+                            <div className="bg-white p-5 rounded-xl border border-[#dcece8] shadow-sm flex items-center justify-between">
+                                <div className="flex items-center gap-4 flex-1">
+                                    <div className="w-10 h-10 bg-[#f4f9f7] rounded-lg flex items-center justify-center">
+                                        <Icon name="target" className="text-[#004233]" size={20} />
+                                    </div>
                                     <div className="flex-1">
-                                        <span className="text-[9px] font-bold uppercase opacity-40 block">Målgrupp</span>
-                                        <input value={targetName} onChange={e => setTargetName(e.target.value)} className="w-full font-bold text-[#004233] bg-transparent outline-none" />
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#004233] opacity-40 block mb-0.5">Målgrupp</span>
+                                        <input 
+                                            value={targetName} 
+                                            onChange={e => setTargetName(e.target.value)} 
+                                            className="w-full text-sm font-bold text-[#004233] bg-transparent outline-none uppercase hover:bg-[#f4f9f7] rounded px-1 -ml-1 transition-colors" 
+                                        />
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <input value={formatNumber(targetSize)} onChange={e => setTargetSize(parseInput(e.target.value))} className="font-mono font-bold text-lg text-[#004233] bg-transparent outline-none text-right w-28" />
+                                <div className="bg-[#f4f9f7] px-4 py-2 rounded-lg border border-[#e0ede9] ml-4">
+                                    <input 
+                                        value={formatNumber(targetSize)} 
+                                        onChange={e => setTargetSize(parseInput(e.target.value))} 
+                                        className="bg-transparent outline-none text-right w-32 text-xl font-bold text-[#004233] table-number tracking-tight" 
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -199,7 +251,7 @@
                                         <th className="p-4 text-right">Mlgr Träff</th>
                                         <th className="p-4 text-right bg-[#f4f9f7]">OTS</th>
                                         <th className="p-4 text-right bg-[#f4f9f7]">1+ {BASE_AUDIENCE_NAME}</th>
-                                        <th className="p-4 text-right bg-[#004233] text-white">1+ {targetName}</th>
+                                        <th className="p-4 text-right bg-[#004233] text-white font-bold">1+ {targetName}</th>
                                         <th className="p-4 no-print"></th>
                                     </tr>
                                 </thead>
@@ -207,25 +259,30 @@
                                     {channels.map(ch => (
                                         <tr key={ch.id} className="border-b border-[#f0f7f5] hover:bg-[#fffcf9]">
                                             <td className="p-1 px-2"><input value={ch.name} onChange={e => handleInputChange(ch.id, 'name', e.target.value)} className="editable-cell w-full" /></td>
-                                            <td className="p-1 px-2"><input value={formatNumber(ch.brutto)} onChange={e => handleInputChange(ch.id, 'brutto', parseInput(e.target.value))} className="editable-cell w-full text-right font-mono" /></td>
-                                            <td className="p-1 px-2"><input value={formatNumber(ch.netto)} onChange={e => handleInputChange(ch.id, 'netto', parseInput(e.target.value))} className="editable-cell w-full text-right font-mono" /></td>
-                                            <td className="p-1 px-2 text-right px-4 font-mono">{ch.mlgr_traff}%</td>
-                                            <td className="p-4 text-right font-mono bg-[#f4f9f7]">{formatDecimal(ch.netto > 0 ? ch.brutto/ch.netto : 0)}</td>
-                                            <td className="p-4 text-right font-mono bg-[#f4f9f7]">{formatDecimal((ch.netto/BASE_AUDIENCE_SIZE)*100)}%</td>
-                                            <td className="p-4 text-right font-mono font-bold bg-[#f4f9f7] text-[#004233]">{formatDecimal(((ch.netto*(ch.mlgr_traff/100))/targetSize)*100)}%</td>
+                                            <td className="p-1 px-2"><input value={formatNumber(ch.brutto)} onChange={e => handleInputChange(ch.id, 'brutto', parseInput(e.target.value))} className="editable-cell w-full text-right table-number" /></td>
+                                            <td className="p-1 px-2"><input value={formatNumber(ch.netto)} onChange={e => handleInputChange(ch.id, 'netto', parseInput(e.target.value))} className="editable-cell w-full text-right table-number" /></td>
+                                            <td className="p-1 px-2">
+                                                <div className="flex items-center justify-end">
+                                                    <input value={ch.mlgr_traff} onChange={e => handleInputChange(ch.id, 'mlgr_traff', parseInput(e.target.value))} className="editable-cell w-16 text-right table-number" />
+                                                    <span className="text-[10px] opacity-30 font-bold mr-2">%</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-right table-number bg-[#f4f9f7]">{formatDecimal(ch.netto > 0 ? ch.brutto/ch.netto : 0)}</td>
+                                            <td className="p-4 text-right table-number bg-[#f4f9f7]">{formatDecimal((ch.netto/BASE_AUDIENCE_SIZE)*100)}%</td>
+                                            <td className="p-4 text-right table-number font-bold bg-[#f4f9f7] text-[#004233]">{formatDecimal(((ch.netto*(ch.mlgr_traff/100))/targetSize)*100)}%</td>
                                             <td className="p-1 text-center no-print"><button onClick={() => removeChannel(ch.id)} className="text-red-200 hover:text-red-600"><Icon name="trash-2" size={14}/></button></td>
                                         </tr>
                                     ))}
                                 </tbody>
-                                <tfoot className="bg-[#004233] text-white font-bold">
-                                    <tr>
-                                        <td className="p-4 uppercase text-[10px]">Totalt</td>
-                                        <td className="p-4 text-right">{formatNumber(totalBrutto)}</td>
-                                        <td className="p-4 text-right">{formatNumber(totalNettoA399)}</td>
+                                <tfoot className="bg-[#004233] text-white">
+                                    <tr className="text-xs">
+                                        <td className="p-4 uppercase text-[10px] font-bold">Totalt</td>
+                                        <td className="p-4 text-right table-number font-bold">{formatNumber(totalBrutto)}</td>
+                                        <td className="p-4 text-right table-number font-bold">{formatNumber(totalNettoA399)}</td>
                                         <td></td>
-                                        <td className="p-4 text-right">{formatDecimal(totalOTS)}</td>
-                                        <td className="p-4 text-right">{formatDecimal(reachA399Pct)}%</td>
-                                        <td className="p-4 text-right text-lg">{formatDecimal(reachMlgrPct)}%</td>
+                                        <td className="p-4 text-right table-number font-bold">{formatDecimal(totalOTS)}</td>
+                                        <td className="p-4 text-right table-number font-bold">{formatDecimal(reachA399Pct)}%</td>
+                                        <td className="p-4 text-right table-number font-bold">{formatDecimal(reachMlgrPct)}%</td>
                                         <td className="no-print"></td>
                                     </tr>
                                 </tfoot>
@@ -237,23 +294,49 @@
 
                         {/* GRAPHS */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* DONUT GRAPH BOX */}
                             <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
-                                <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-6">Total Räckvidd</h3>
-                                <div className="flex flex-row justify-around items-center">
+                                <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8">Total Räckvidd</h3>
+                                <div className="flex flex-row justify-around items-center h-48">
                                     <DonutGraph percentage={reachMlgrPct} label={targetName} icon="target" />
                                     <DonutGraph percentage={reachA399Pct} label={BASE_AUDIENCE_NAME} icon="users" />
                                 </div>
                             </div>
+
+                            {/* UPDATED BAR GRAPH BOX */}
                             <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
-                                <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-6">Ackumulerad Räckvidd</h3>
-                                <div className="h-40 flex items-end gap-2">
+                                <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8">Ackumulerad Räckvidd (upp till 100%)</h3>
+                                <div className="h-48 flex items-end justify-between gap-3 px-2">
                                     {reachData.map((item, idx) => (
-                                        <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full">
-                                            <span className="text-[8px] font-bold mb-1">{Math.round(item.totalReach)}%</span>
-                                            <div className="w-full bg-[#004233] rounded-t-sm opacity-80" style={{ height: `${item.totalReach}%` }} />
-                                            <span className="text-[7px] mt-2 uppercase opacity-40 truncate w-full text-center">{item.name}</span>
+                                        <div key={idx} className="flex-1 flex flex-col items-center h-full">
+                                            <div className="relative w-full h-full bg-[#f4f9f7] rounded-md overflow-hidden border border-[#e0ede9] group transition-all">
+                                                {/* The Fill Bar */}
+                                                <div 
+                                                    className="absolute bottom-0 left-0 w-full bg-[#004233] transition-all duration-1000 ease-out"
+                                                    style={{ height: `${item.totalReach}%` }}
+                                                >
+                                                    {/* Glow effect at top of bar */}
+                                                    <div className="absolute top-0 left-0 w-full h-1 bg-white/20" />
+                                                </div>
+                                                
+                                                {/* Percentage label floating inside or above */}
+                                                <div className="absolute bottom-1 w-full text-center">
+                                                    <span className={`text-[8px] font-bold table-number ${item.totalReach > 20 ? 'text-white' : 'text-[#004233] -top-5 absolute left-0 right-0'}`}>
+                                                        {Math.round(item.totalReach)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <span className="text-[7px] mt-2 uppercase font-bold opacity-40 truncate w-full text-center px-1" title={item.name}>
+                                                {item.name}
+                                            </span>
                                         </div>
                                     ))}
+                                    {/* Empty state if no channels */}
+                                    {channels.length === 0 && (
+                                        <div className="w-full h-full flex items-center justify-center opacity-20 italic text-xs">
+                                            Ingen data tillgänglig
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
