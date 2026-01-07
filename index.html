@@ -1,0 +1,382 @@
+import React, { useState, useMemo } from 'react';
+// Vi importerar ikoner från biblioteket 'lucide-react' för ett modernt utseende
+import { Plus, Trash2, PieChart, BarChart3, Layers, Target, Users, Download, Copy, Check, AlertCircle } from 'lucide-react';
+
+/** * GLOBAL DATA OCH KONFIGURATION
+ * Här definierar vi de fasta värdena som används i hela applikationen.
+ */
+const BASE_AUDIENCE_NAME = "A3-99"; // Namnet på den breda basmålgruppen
+const BASE_AUDIENCE_SIZE = 10184000; // Storleken på Sveriges befolkning (A3-99)
+
+// Färgpalett baserad på Screams grafiska profil
+const COLORS = {
+  primary: '#004233',   // Mörkgrön (huvudfärg)
+  secondary: '#fff1e4', // Sand/Beige (bakgrund)
+  accent: '#e8f5e9',    // Ljusgrön accent
+  textMain: '#004233',  // Textfärg
+  border: '#dcece8',    // Kantlinjer
+  chartBg: '#f0f7f5'    // Bakgrund för diagram
+};
+
+// URL till Screams logotyp (vit version för den mörka headern)
+const LOGO_URL = "https://cdn.prod.website-files.com/6659ca39bd3186a564743e73/6659d12099b696012798747a_scream-logo-vit.svg";
+
+const MediaPlanner = () => {
+  /** * STATE (TILLSTÅND)
+   * Här lagrar vi all data som användaren kan ändra på skärmen.
+   */
+  const [targetName, setTargetName] = useState("W19-35"); // Namn på specifik målgrupp
+  const [targetSize, setTargetSize] = useState(1071000); // Storlek på specifik målgrupp
+  const [useDeduplication, setUseDeduplication] = useState(true); // Om vi ska räkna med överlapp
+  const [correctionFactor, setCorrectionFactor] = useState(0.9); // Hur mycket vi reducerar pga de-duplicering
+  const [copyFeedback, setCopyFeedback] = useState(false); // Visar "Kopierad!"-text
+  const [showPrintMessage, setShowPrintMessage] = useState(false); // Felmeddelande om PDF blockeras
+
+  // Listan över alla medieval (kanaler) i planen
+  // FIX: Ändrade ID för Facebook/IG från 2 till 3 för att undvika "duplicate key"-fel
+  const [channels, setChannels] = useState([
+    { id: 1, name: "TV4 Riks", brutto: 3400000, netto: 726000, mlgr_traff: 100 },
+    { id: 2, name: "YouTube", brutto: 3700000, netto: 597000, mlgr_traff: 100 },
+    { id: 3, name: "Facebook/IG", brutto: 3100000, netto: 479487, mlgr_traff: 100 },
+    { id: 4, name: "Podcast", brutto: 1700000, netto: 697000, mlgr_traff: 100 },
+  ]);
+
+  /** * HJÄLPFUNKTIONER FÖR FORMATERING
+   */
+  const formatNumber = (num) => new Intl.NumberFormat('sv-SE').format(Math.round(num));
+  const formatDecimal = (num) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+
+  const parseInput = (val) => {
+    if (typeof val !== 'string') return val;
+    const clean = val.replace(/\s/g, '').replace(/%/g, '').replace(/,/g, '.');
+    return clean === '' ? 0 : Number(clean);
+  };
+
+  /** * LOGIK FÖR ATT ÄNDRA DATA
+   */
+  const handleInputChange = (id, field, value) => {
+    setChannels(channels.map(ch => ch.id === id ? { ...ch, [field]: value } : ch));
+  };
+
+  const addChannel = () => {
+    const newId = channels.length > 0 ? Math.max(...channels.map(c => c.id)) + 1 : 1;
+    setChannels([...channels, { id: newId, name: `Kanal ${newId}`, brutto: 0, netto: 0, mlgr_traff: 100 }]);
+  };
+
+  const removeChannel = (id) => setChannels(channels.filter(c => c.id !== id));
+
+  /** * MATEMATISK MODELL FÖR RÄCKVIDD
+   */
+  const calculateNetto = (chanList, universeSize, isMlgr = false) => {
+    if (chanList.length === 0) return 0;
+    let probNoHit = 1.0;
+    chanList.forEach(ch => {
+      const factor = isMlgr ? (Number(ch.mlgr_traff) / 100) : 1;
+      let reach = (Number(ch.netto) * factor) / universeSize;
+      probNoHit *= (1 - Math.min(reach, 1));
+    });
+    return (1 - probNoHit) * (useDeduplication ? correctionFactor : 1) * universeSize;
+  };
+
+  /** * BERÄKNADE VÄRDEN
+   */
+  const totalBrutto = channels.reduce((sum, ch) => sum + Number(ch.brutto), 0);
+  const totalNettoA399 = calculateNetto(channels, BASE_AUDIENCE_SIZE);
+  const totalNettoMlgr = calculateNetto(channels, targetSize, true);
+  const totalOTS = totalNettoA399 > 0 ? totalBrutto / totalNettoA399 : 0;
+  const reachA399Pct = (totalNettoA399 / BASE_AUDIENCE_SIZE) * 100;
+  const reachMlgrPct = (totalNettoMlgr / targetSize) * 100;
+
+  // Förbereder data för graferna
+  const reachData = useMemo(() => {
+    let list = [];
+    let prevReach = 0;
+    for (let i = 1; i <= channels.length; i++) {
+      const subList = channels.slice(0, i);
+      const currentReach = (calculateNetto(subList, targetSize, true) / targetSize) * 100;
+      list.push({
+        name: channels[i-1].name || `Kanal ${i}`,
+        totalReach: currentReach,
+        incremental: currentReach - prevReach
+      });
+      prevReach = currentReach;
+    }
+    return list;
+  }, [channels, targetSize, useDeduplication, correctionFactor]);
+
+  /** * DELNINGSFUNKTIONER
+   */
+  const copySummary = () => {
+    const summary = `
+SCREAM MEDIA PLANNER - SAMMANFATTNING
+------------------------------------
+Målgrupp: ${targetName} (${formatNumber(targetSize)})
+Faktor: ${correctionFactor} (${useDeduplication ? 'De-duplicerad' : 'Linjär'})
+RESULTAT:
+Räckvidd (${targetName}): ${formatDecimal(reachMlgrPct)}%
+Räckvidd (${BASE_AUDIENCE_NAME}): ${formatDecimal(reachA399Pct)}%
+    `.trim();
+
+    const textArea = document.createElement("textarea");
+    textArea.value = summary;
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    } catch (err) {}
+    document.body.removeChild(textArea);
+  };
+
+  const handlePrint = () => {
+    try {
+      window.print();
+    } catch (e) {
+      setShowPrintMessage(true);
+      setTimeout(() => setShowPrintMessage(false), 5000);
+    }
+  };
+
+  /** * GRAFISKA KOMPONENTER
+   */
+  const DonutGraph = ({ percentage, label, icon: Icon }) => (
+    <div className="flex flex-col items-center flex-1">
+      <div className="relative w-24 h-24 md:w-32 md:h-32">
+        <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+          <circle cx="18" cy="18" r="15.5" fill="none" className="stroke-gray-100" strokeWidth="3.5" />
+          <circle 
+            cx="18" cy="18" r="15.5" fill="none" 
+            stroke={COLORS.primary} 
+            strokeWidth="3.5" 
+            strokeDasharray={`${Math.min(percentage, 100)}, 100`} 
+            strokeLinecap="round" 
+            className="transition-all duration-700 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <Icon size={14} className="opacity-20 mb-0.5" />
+          <span className="text-lg md:text-xl font-bold leading-none">{Math.round(percentage)}%</span>
+        </div>
+      </div>
+      <p className="mt-2 text-[9px] font-bold uppercase tracking-widest text-[#004233] opacity-60 text-center">
+        {label}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen font-['Archivo'] py-6 px-4 print:p-0 print:bg-white" style={{ backgroundColor: COLORS.secondary, color: COLORS.textMain }}>
+      <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .print-break { page-break-before: always; }
+          body { background: white !important; color: black !important; }
+          .max-w-6xl { max-width: 100% !important; padding: 0 !important; }
+        }
+        .editable-cell { transition: all 0.2s; border-bottom: 1px solid transparent; padding: 4px 12px; border-radius: 4px; background: transparent; }
+        .editable-cell:hover { background: rgba(255,255,255,0.6); border-bottom-color: ${COLORS.primary}44; }
+        .editable-cell:focus { outline: none; background: white; border-bottom-color: ${COLORS.primary}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        .settings-card { background: white; border: 1px solid ${COLORS.border}; border-radius: 12px; }
+        
+        /* Vi tar bort min-width och overflow-x för att eliminera scrollen på staplarna */
+        .chart-container-fluid { width: 100%; display: flex; align-items: flex-end; gap: 12px; height: 100%; }
+      `}</style>
+
+      <div className="max-w-6xl mx-auto space-y-4">
+        
+        {/* HEADER */}
+        <div className="bg-[#004233] text-[#fff1e4] p-5 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-6">
+            <img src={LOGO_URL} alt="Scream Logo" className="h-8 object-contain" />
+            <div className="h-8 w-px bg-white/20 hidden md:block" />
+            <h1 className="text-xl font-bold tracking-tight">Scream Reach Planner</h1>
+          </div>
+          
+          <div className="flex flex-wrap items-center justify-center gap-3 no-print">
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg border border-white/20">
+              <span className="text-[9px] font-bold uppercase opacity-60">Faktor:</span>
+              <input 
+                type="text"
+                value={correctionFactor} 
+                onChange={e => setCorrectionFactor(parseInput(e.target.value))}
+                className="bg-transparent font-bold w-10 outline-none text-center text-sm"
+              />
+            </div>
+            
+            <button 
+              onClick={() => setUseDeduplication(!useDeduplication)}
+              className="text-[10px] font-bold uppercase tracking-widest bg-white/10 px-4 py-2 rounded-full border border-white/20 hover:bg-white/20 transition-all"
+            >
+              {useDeduplication ? "De-duplicerad" : "Linjär"}
+            </button>
+
+            <button 
+              onClick={copySummary}
+              className="p-2 bg-white/10 rounded-lg border border-white/20 hover:bg-white/20 transition-all flex items-center gap-2 text-[10px] font-bold uppercase"
+            >
+              {copyFeedback ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+              {copyFeedback ? "Kopierad!" : "Kopiera text"}
+            </button>
+
+            <button 
+              onClick={handlePrint}
+              className="p-2 bg-white text-[#004233] rounded-lg hover:bg-[#fff1e4] transition-all flex items-center gap-2 text-[10px] font-bold uppercase"
+            >
+              <Download size={14} />
+              Spara PDF
+            </button>
+          </div>
+        </div>
+
+        {/* SETTINGS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="settings-card p-4 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+               <div className="w-8 h-8 rounded-lg bg-[#f4f9f7] flex items-center justify-center">
+                 <Users size={16} className="text-[#004233] opacity-40" />
+               </div>
+               <div>
+                 <span className="text-[9px] font-bold uppercase opacity-40 tracking-wider block leading-none mb-1">Basuniversum</span>
+                 <span className="text-sm font-bold text-[#004233]">{BASE_AUDIENCE_NAME}</span>
+               </div>
+            </div>
+            <div className="text-right font-mono font-bold text-lg text-[#004233]">{formatNumber(BASE_AUDIENCE_SIZE)}</div>
+          </div>
+
+          <div className="settings-card p-4 flex justify-between items-center">
+            <div className="flex items-center gap-3 flex-1">
+               <div className="w-8 h-8 rounded-lg bg-[#f4f9f7] flex items-center justify-center">
+                 <Target size={16} className="text-[#004233] opacity-40" />
+               </div>
+               <div className="flex-1">
+                 <span className="text-[9px] font-bold uppercase opacity-40 tracking-wider block leading-none mb-1">Målgrupp</span>
+                 <input value={targetName} onChange={e => setTargetName(e.target.value)} className="w-full font-bold text-[#004233] bg-transparent outline-none text-sm" />
+               </div>
+            </div>
+            <div className="text-right flex-1">
+              <span className="text-[9px] font-bold uppercase opacity-40 tracking-wider block leading-none mb-1">Storlek</span>
+              <input type="text" value={formatNumber(targetSize)} onChange={e => setTargetSize(parseInput(e.target.value))} className="w-full font-mono font-bold text-lg text-[#004233] bg-transparent outline-none text-right" />
+            </div>
+          </div>
+        </div>
+
+        {/* TABELL */}
+        <div className="bg-white rounded-xl shadow-sm border border-[#dcece8] overflow-hidden overflow-x-auto print:overflow-visible">
+          <table className="w-full text-left border-collapse min-w-[950px] print:min-w-full">
+            <thead className="bg-[#f9fdfb] text-[10px] uppercase font-bold tracking-widest opacity-60 border-b border-[#dcece8]">
+              <tr>
+                <th className="p-4 w-[220px]">Kanalnamn</th>
+                <th className="p-4 text-right w-[140px]">Brutto Imps</th>
+                <th className="p-4 text-right w-[140px]">Netto Imps</th>
+                <th className="p-4 text-right w-[130px]">Mlgr Träff (%)</th>
+                <th className="p-4 text-right bg-[#f4f9f7] w-[90px]">OTS</th>
+                <th className="p-4 text-right bg-[#f4f9f7] w-[140px]">1+ {BASE_AUDIENCE_NAME}</th>
+                <th className="p-4 text-right bg-[#004233] text-white w-[140px]">1+ {targetName}</th>
+                <th className="p-4 no-print w-[50px]"></th>
+              </tr>
+            </thead>
+            <tbody className="text-xs">
+              {channels.map(ch => (
+                <tr key={ch.id} className="border-b border-[#f0f7f5] hover:bg-[#fffcf9]">
+                  <td className="p-1 px-2"><input value={ch.name} onChange={e => handleInputChange(ch.id, 'name', e.target.value)} className="editable-cell w-full font-medium" /></td>
+                  <td className="p-1 px-2"><input type="text" value={formatNumber(ch.brutto)} onChange={e => handleInputChange(ch.id, 'brutto', parseInput(e.target.value))} className="editable-cell w-full text-right font-mono" /></td>
+                  <td className="p-1 px-2"><input type="text" value={formatNumber(ch.netto)} onChange={e => handleInputChange(ch.id, 'netto', parseInput(e.target.value))} className="editable-cell w-full text-right font-mono" /></td>
+                  <td className="p-1 px-2">
+                    <div className="flex items-center justify-end editable-cell">
+                      <input type="text" value={ch.mlgr_traff} onChange={e => handleInputChange(ch.id, 'mlgr_traff', parseInput(e.target.value))} className="w-8 text-right font-mono bg-transparent outline-none" />
+                      <span className="opacity-40 ml-1">%</span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-right font-mono bg-[#f4f9f7] text-gray-600">{formatDecimal(ch.netto > 0 ? ch.brutto/ch.netto : 0)}</td>
+                  <td className="p-4 text-right font-mono bg-[#f4f9f7] text-gray-600 whitespace-nowrap">{formatDecimal((ch.netto/BASE_AUDIENCE_SIZE)*100)}%</td>
+                  <td className="p-4 text-right font-mono font-bold bg-[#f4f9f7] text-[#004233] whitespace-nowrap">{formatDecimal(((ch.netto*(ch.mlgr_traff/100))/targetSize)*100)}%</td>
+                  <td className="p-1 text-center no-print"><button onClick={() => removeChannel(ch.id)} className="text-red-200 hover:text-red-600 p-2"><Trash2 size={12}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-[#004233] text-[#fff1e4] font-bold">
+              <tr>
+                <td className="p-5 uppercase text-[10px] tracking-widest">Totalt</td>
+                <td className="p-5 text-right font-mono text-sm">{formatNumber(totalBrutto)}</td>
+                <td className="p-5 text-right font-mono text-sm">{formatNumber(totalNettoA399)}</td>
+                <td className="p-5"></td>
+                <td className="p-5 text-right font-mono text-sm">{formatDecimal(totalOTS)}</td>
+                <td className="p-5 text-right font-mono text-sm">{formatDecimal(reachA399Pct)}%</td>
+                <td className="p-5 text-right font-mono text-base">{formatDecimal(reachMlgrPct)}%</td>
+                <td className="no-print"></td>
+              </tr>
+            </tfoot>
+          </table>
+          <button onClick={addChannel} className="w-full py-3 bg-[#f4f9f7] text-[#004233] text-[9px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#e8f5e9] no-print">
+            <Plus size={12} /> Lägg till rad
+          </button>
+        </div>
+
+        {/* GRAFER */}
+        <div className="space-y-4">
+          <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
+            <div className="flex items-center gap-2 mb-8 no-print">
+               <PieChart size={16} className="text-[#004233] opacity-40" />
+               <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Räckvidd</h3>
+            </div>
+            <div className="flex flex-row justify-around items-center max-w-2xl mx-auto gap-8">
+              <DonutGraph percentage={reachMlgrPct} label={targetName} icon={Target} />
+              <div className="w-px h-16 bg-gray-100 hidden md:block" />
+              <DonutGraph percentage={reachA399Pct} label={BASE_AUDIENCE_NAME} icon={Users} />
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
+            <div className="flex items-center gap-2 mb-6 no-print">
+               <BarChart3 size={16} className="text-[#004233] opacity-40" />
+               <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60">Ackumulerad Tillväxt ({targetName})</h3>
+            </div>
+            <div className="h-48">
+              <div className="chart-container-fluid">
+                {reachData.map((item, idx) => (
+                  <div key={idx} className="flex-1 flex flex-col items-center relative h-full justify-end">
+                    <span className="text-[9px] font-bold mb-1 text-[#004233]">{Math.round(item.totalReach)}%</span>
+                    <div className="w-full bg-[#004233]/10 rounded-t-md border-x border-t border-[#004233]/20" style={{ height: `${item.totalReach}%` }} />
+                    <div className="absolute top-full mt-2 w-full text-center">
+                      <p className="text-[8px] font-bold uppercase opacity-60 truncate px-1">{item.name}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
+            <div className="flex items-center gap-2 mb-6 no-print">
+               <Layers size={16} className="text-[#004233] opacity-40" />
+               <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60">Unikt Bidrag per kanal</h3>
+            </div>
+            <div className="h-48">
+              <div className="chart-container-fluid">
+                {reachData.map((item, idx) => (
+                  <div key={idx} className="flex-1 flex flex-col items-center relative h-full justify-end">
+                    <span className="text-[10px] font-bold mb-1 text-[#004233]">+{formatDecimal(item.incremental)}%</span>
+                    <div className="w-full max-w-[40px] bg-[#004233] rounded-t-md" style={{ height: `${item.incremental * 4}%`, minHeight: '4px' }} />
+                    <div className="absolute top-full mt-2 w-full text-center">
+                      <p className="text-[8px] font-bold uppercase opacity-60 truncate px-1">{item.name}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center pt-8 opacity-20 text-[8px] uppercase tracking-[0.3em] no-print">
+          Powered by Scream Reach Planner • {new Date().getFullYear()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MediaPlanner;
