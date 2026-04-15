@@ -36,15 +36,23 @@
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 4px;
             padding: 4px 8px;
-            width: 50px;
+            width: 60px;
             text-align: center;
             color: white;
             font-weight: bold;
             outline: none;
             transition: all 0.2s;
         }
+        .factor-input:focus {
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.5);
+        }
 
-        /* Custom scrollbar for better look */
+        .drag-row { cursor: grab; }
+        .drag-row:active { cursor: grabbing; }
+        .drag-row.dragging { opacity: 0.4; }
+        .drag-row.drag-over { border-top: 2px solid #004233; }
+
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #004233; border-radius: 10px; }
@@ -54,7 +62,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo, useEffect, useRef } = React;
 
         const Icon = ({ name, size = 16, className = "" }) => {
             useEffect(() => {
@@ -65,20 +73,21 @@
 
         const BASE_AUDIENCE_NAME = "A3-99";
         const BASE_AUDIENCE_SIZE = 10184000;
-        const COLORS = {
-            primary: '#004233',
-            secondary: '#fff1e4',
-            border: '#dcece8',
-            barBg: '#e0ede9' // Light green for the 100% background
-        };
         const LOGO_URL = "https://cdn.prod.website-files.com/6659ca39bd3186a564743e73/6659d12099b696012798747a_scream-logo-vit.svg";
 
         const App = () => {
             const [targetName, setTargetName] = useState("W19-35");
             const [targetSize, setTargetSize] = useState(1071000);
             const [useDeduplication, setUseDeduplication] = useState(true);
-            const [correctionFactor, setCorrectionFactor] = useState(0.9);
+
+            // Store correction factor as a string to allow decimal typing
+            const [correctionFactorStr, setCorrectionFactorStr] = useState("0.9");
+            const correctionFactor = parseFloat(correctionFactorStr.replace(',', '.')) || 0.9;
+
             const [copyFeedback, setCopyFeedback] = useState(false);
+            const [dragOverId, setDragOverId] = useState(null);
+            const dragIdRef = useRef(null);
+
             const [channels, setChannels] = useState([
                 { id: 1, name: "TV4 Riks", brutto: 3400000, netto: 726000, mlgr_traff: 100 },
                 { id: 2, name: "YouTube", brutto: 3700000, netto: 597000, mlgr_traff: 100 },
@@ -105,6 +114,34 @@
             };
 
             const removeChannel = (id) => setChannels(channels.filter(c => c.id !== id));
+
+            // Drag-and-drop handlers
+            const handleDragStart = (e, id) => {
+                dragIdRef.current = id;
+                e.dataTransfer.effectAllowed = 'move';
+            };
+            const handleDragOver = (e, id) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverId(id);
+            };
+            const handleDragLeave = () => setDragOverId(null);
+            const handleDrop = (e, targetId) => {
+                e.preventDefault();
+                setDragOverId(null);
+                const fromId = dragIdRef.current;
+                if (fromId === targetId) return;
+                setChannels(prev => {
+                    const arr = [...prev];
+                    const fromIdx = arr.findIndex(c => c.id === fromId);
+                    const toIdx = arr.findIndex(c => c.id === targetId);
+                    const [moved] = arr.splice(fromIdx, 1);
+                    arr.splice(toIdx, 0, moved);
+                    return arr;
+                });
+                dragIdRef.current = null;
+            };
+            const handleDragEnd = () => { setDragOverId(null); dragIdRef.current = null; };
 
             const calculateNetto = (chanList, universeSize, isMlgr = false) => {
                 if (chanList.length === 0) return 0;
@@ -153,7 +190,7 @@
                     <div className="relative w-24 h-24 md:w-32 md:h-32">
                         <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                             <circle cx="18" cy="18" r="15.5" fill="none" stroke="#f3f4f6" strokeWidth="3.5" />
-                            <circle cx="18" cy="18" r="15.5" fill="none" stroke={COLORS.primary} strokeWidth="3.5" strokeDasharray={`${Math.min(percentage, 100)}, 100`} strokeLinecap="round" className="transition-all duration-700" />
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#004233" strokeWidth="3.5" strokeDasharray={`${Math.min(percentage, 100)}, 100`} strokeLinecap="round" className="transition-all duration-700" />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <Icon name={icon} size={14} className="opacity-20 mb-0.5" />
@@ -179,8 +216,12 @@
                                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Faktor:</span>
                                     <input 
                                         type="text"
-                                        value={correctionFactor} 
-                                        onChange={(e) => setCorrectionFactor(parseInput(e.target.value))}
+                                        value={correctionFactorStr}
+                                        onChange={(e) => setCorrectionFactorStr(e.target.value)}
+                                        onBlur={(e) => {
+                                            const parsed = parseFloat(e.target.value.replace(',', '.'));
+                                            setCorrectionFactorStr(isNaN(parsed) ? "0.9" : String(parsed));
+                                        }}
                                         className="factor-input text-xs table-number"
                                     />
                                 </div>
@@ -245,6 +286,7 @@
                             <table className="w-full text-left border-collapse min-w-[900px]">
                                 <thead className="bg-[#f9fdfb] text-[10px] uppercase font-bold tracking-widest opacity-60 border-b">
                                     <tr>
+                                        <th className="p-4 w-8"></th>
                                         <th className="p-4">Kanalnamn</th>
                                         <th className="p-4 text-right">Brutto Imps</th>
                                         <th className="p-4 text-right">Netto Imps</th>
@@ -257,7 +299,19 @@
                                 </thead>
                                 <tbody className="text-xs">
                                     {channels.map(ch => (
-                                        <tr key={ch.id} className="border-b border-[#f0f7f5] hover:bg-[#fffcf9]">
+                                        <tr 
+                                            key={ch.id}
+                                            draggable
+                                            onDragStart={e => handleDragStart(e, ch.id)}
+                                            onDragOver={e => handleDragOver(e, ch.id)}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={e => handleDrop(e, ch.id)}
+                                            onDragEnd={handleDragEnd}
+                                            className={`border-b border-[#f0f7f5] hover:bg-[#fffcf9] drag-row ${dragIdRef.current === ch.id ? 'dragging' : ''} ${dragOverId === ch.id ? 'drag-over' : ''}`}
+                                        >
+                                            <td className="p-2 pl-3 text-center">
+                                                <span className="text-[#00423344] text-base select-none" title="Dra för att flytta">⠿</span>
+                                            </td>
                                             <td className="p-1 px-2"><input value={ch.name} onChange={e => handleInputChange(ch.id, 'name', e.target.value)} className="editable-cell w-full" /></td>
                                             <td className="p-1 px-2"><input value={formatNumber(ch.brutto)} onChange={e => handleInputChange(ch.id, 'brutto', parseInput(e.target.value))} className="editable-cell w-full text-right table-number" /></td>
                                             <td className="p-1 px-2"><input value={formatNumber(ch.netto)} onChange={e => handleInputChange(ch.id, 'netto', parseInput(e.target.value))} className="editable-cell w-full text-right table-number" /></td>
@@ -276,6 +330,7 @@
                                 </tbody>
                                 <tfoot className="bg-[#004233] text-white">
                                     <tr className="text-xs">
+                                        <td></td>
                                         <td className="p-4 uppercase text-[10px] font-bold">Totalt</td>
                                         <td className="p-4 text-right table-number font-bold">{formatNumber(totalBrutto)}</td>
                                         <td className="p-4 text-right table-number font-bold">{formatNumber(totalNettoA399)}</td>
@@ -294,7 +349,6 @@
 
                         {/* GRAPHS */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* DONUT GRAPH BOX */}
                             <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
                                 <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8">Total Räckvidd</h3>
                                 <div className="flex flex-row justify-around items-center h-48">
@@ -303,23 +357,18 @@
                                 </div>
                             </div>
 
-                            {/* UPDATED BAR GRAPH BOX */}
                             <div className="bg-white p-6 rounded-xl border border-[#dcece8] shadow-sm">
                                 <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8">Ackumulerad Räckvidd</h3>
                                 <div className="h-48 flex items-end justify-between gap-3 px-2">
                                     {reachData.map((item, idx) => (
                                         <div key={idx} className="flex-1 flex flex-col items-center h-full">
-                                            <div className="relative w-full h-full bg-[#f4f9f7] rounded-md overflow-hidden border border-[#e0ede9] group transition-all">
-                                                {/* The Fill Bar */}
+                                            <div className="relative w-full h-full bg-[#f4f9f7] rounded-md overflow-hidden border border-[#e0ede9]">
                                                 <div 
                                                     className="absolute bottom-0 left-0 w-full bg-[#004233] transition-all duration-1000 ease-out"
                                                     style={{ height: `${item.totalReach}%` }}
                                                 >
-                                                    {/* Glow effect at top of bar */}
                                                     <div className="absolute top-0 left-0 w-full h-1 bg-white/20" />
                                                 </div>
-                                                
-                                                {/* Percentage label floating inside or above */}
                                                 <div className="absolute bottom-1 w-full text-center">
                                                     <span className={`text-[8px] font-bold table-number ${item.totalReach > 20 ? 'text-white' : 'text-[#004233] -top-5 absolute left-0 right-0'}`}>
                                                         {Math.round(item.totalReach)}%
@@ -331,7 +380,6 @@
                                             </span>
                                         </div>
                                     ))}
-                                    {/* Empty state if no channels */}
                                     {channels.length === 0 && (
                                         <div className="w-full h-full flex items-center justify-center opacity-20 italic text-xs">
                                             Ingen data tillgänglig
